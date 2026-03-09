@@ -1,18 +1,74 @@
 # Dementia Classification (DenseNet121)
 
-This project trains a DenseNet121-based image classifier to distinguish between different dementia-related classes using MRI/brain scan images.
+This project trains a DenseNet121-based image classifier to distinguish between different dementia-related classes using MRI/brain scan images from the OASIS (Open Access Series of Imaging Studies) dataset.
 
-The main training script is:
-- `dementia.py` – trains a DenseNet121 model on images in the `input/` folder and saves model checkpoints.
+---
 
-There is an (empty) placeholder file `demeval.py` that currently does not contain evaluation or inference code.
+## Model Architecture
+
+- **Base Model**: DenseNet-121 (pretrained on ImageNet)
+- **Modification**: Final classifier layer replaced with `nn.Linear(1024, 3)` for 3-class classification
+- **Input Size**: 224×224 RGB images (grayscale MRI scans converted to 3-channel)
+- **Output**: 3 class probabilities (softmax)
+
+### Classification Classes
+| Label | Class Name | Description |
+|-------|------------|-------------|
+| 0 | Moderate Dementia | Patients with moderate cognitive impairment |
+| 1 | Non Demented | Healthy control subjects |
+| 2 | Very mild Dementia | Patients with early-stage/mild cognitive impairment |
+
+---
+
+## Dataset Statistics
+
+The dataset uses MRI brain scan images from the **OASIS-1** dataset. Each patient has multiple MRI slices (typically 60-70 slices per patient).
+
+### Training Set (36 patients total)
+| Class | Patient Count | Patient IDs |
+|-------|---------------|-------------|
+| Moderate Dementia | 14 | 0028, 0031, 0052, 0053, 0056, 0067, 0073, 0122, 0134, 0137, 0184, 0185, 0308, 0351 |
+| Non Demented | 11 | 0004, 0005, 0006, 0007, 0009, 0010, 0011, 0012, 0013, 0014, 0017 |
+| Very mild Dementia | 11 | 0021, 0022, 0023, 0039, 0041, 0042, 0046, 0060, 0066, 0082, 0084 |
+
+### Test Set (8 patients total)
+| Class | Patient Count | Patient IDs |
+|-------|---------------|-------------|
+| Moderate Dementia | 3 | 0028, 0031, 0035 |
+| Non Demented | 2 | 0001, 0002 |
+| Very mild Dementia | 3 | 0003, 0015, 0016 |
+
+**Total Patients**: 44 unique patients (36 training + 8 test)
+
+---
+
+## How Prediction Works
+
+The evaluation script (`demeval.py`) performs **patient-level prediction** using slice averaging:
+
+1. **Load all MRI slices** for a single patient (e.g., 61 slices for patient OAS1_0031)
+2. **Preprocess each slice**:
+   - Convert grayscale to 3-channel RGB
+   - Resize to 224×224 pixels
+   - Normalize using ImageNet mean/std
+3. **Forward pass** through DenseNet-121 → outputs `[num_slices, 3]` logits
+4. **Apply softmax** to get probabilities for each slice
+5. **Average probabilities** across all slices (ensemble voting)
+6. **Final prediction**: Class with highest average probability
+
+### Example Output
+```
+torch.Size([61, 3, 224, 224])  # 61 slices, 3 channels, 224x224
+torch.Size([61, 3])            # 61 predictions, 3 classes each
+Moderate Dementia              # Final averaged prediction
+```
 
 ---
 
 ## Project Structure
 
-- `dementia.py` – training and validation loop using DenseNet121.
-- `demeval.py` – currently empty; reserved for future evaluation code.
+- `dementia.py` – Training and validation loop using DenseNet121
+- `demeval.py` – Patient-level inference/evaluation script
 - `input/`
   - `train/`
     - `Moderate Dementia/`
@@ -26,10 +82,10 @@ There is an (empty) placeholder file `demeval.py` that currently does not contai
   - `model_checkpoint_17.pth`
   - `model_checkpoint_21.pth`
   - `model_checkpoint_22.pth`
-- `best_model18.pth/` – unpacked PyTorch checkpoint directory (created when saving a `.pth` file as a directory in some environments).
-- `requirements.txt` – Python dependencies for this project.
+- `best_model18.pth/` – Unpacked PyTorch checkpoint directory
+- `requirements.txt` – Python dependencies
 
-The training script also saves new checkpoints in the project root as `model_checkpoint_<epoch>.pth` plus a final `model_checkpoint_final.pth`.
+The training script saves checkpoints as `model_checkpoint_<epoch>.pth` plus a final `model_checkpoint_final.pth`.
 
 ---
 
