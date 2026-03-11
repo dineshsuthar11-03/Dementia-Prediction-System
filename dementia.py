@@ -9,7 +9,7 @@ from collections import defaultdict
 import pandas as pd
 from torchvision.datasets import ImageFolder
 from torch.utils.data import DataLoader
-device="cuda" if torch.cuda.is_available() else "cpu"
+device="cuda" if  torch.cuda.is_available() else "cpu"
 print(device)
 model = models.densenet121(weights=models.DenseNet121_Weights.DEFAULT).to(device)
 
