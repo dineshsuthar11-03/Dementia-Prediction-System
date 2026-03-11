@@ -42,12 +42,12 @@ model.load_state_dict(checkpoint["model"])
 
 model.eval()
 with torch.no_grad():
-    print(x.shape)
+    
     x=x.to(device)
     pred=model(x)
   
     
-    print(pred.shape)
+    
     label=torch.mean(F.softmax(pred,dim=1),axis=0)
     
     print(o[label.argmax().item()])
