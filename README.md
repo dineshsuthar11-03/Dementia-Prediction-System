@@ -1,6 +1,6 @@
 # Dementia Classification (DenseNet121)
 
-This project trains a DenseNet121-based image classifier to distinguish between different dementia-related classes using MRI/brain scan images from the OASIS (Open Access Series of Imaging Studies) dataset.
+This project trains a DenseNet121-based image classifier to distinguish between different dementia-related classes using MRI/brain scan images from the OASIS (Open Access Series of Imaging Studies) dataset
 
 ---
 
