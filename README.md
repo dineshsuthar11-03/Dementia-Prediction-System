@@ -1,103 +1,340 @@
-# Dementia Classification (DenseNet121)
+# Dementia Prediction System
 
-This project trains a DenseNet121-based image classifier to distinguish between different dementia-related classes using MRI/brain scan images from the OASIS (Open Access Series of Imaging Studies) dataset.
+A deep learning–based MRI image classification system that automatically predicts the stage of dementia from brain MRI scans. The model is built on **DenseNet-121**, fine-tuned on the OASIS-1 dataset, and classifies patients into three categories: *Moderate Dementia*, *Non Demented*, and *Very Mild Dementia*.
+
+---
+
+## Table of Contents
+
+- [Overview](#overview)
+- [Model Architecture](#model-architecture)
+- [Dataset](#dataset)
+- [Training Strategy](#training-strategy)
+- [Fine-Tuning Improvements](#fine-tuning-improvements)
+- [Evaluation Metrics](#evaluation-metrics)
+- [How Prediction Works](#how-prediction-works)
+- [Project Structure](#project-structure)
+- [Installation & Usage](#installation--usage)
+- [Dependencies](#dependencies)
+
+---
+
+## Overview
+
+Dementia is a progressive neurological condition that leads to cognitive decline. Early and accurate detection through MRI scans is critical for timely intervention. This system automates the classification of dementia severity directly from raw MRI slice images using transfer learning with DenseNet-121.
+
+**Problem Type**: Multi-class image classification (3 classes)  
+**Input**: Grayscale MRI brain scan images (JPEG)  
+**Output**: Predicted dementia class with confidence score  
 
 ---
 
 ## Model Architecture
 
-- **Base Model**: DenseNet-121 (pretrained on ImageNet)
-- **Modification**: Final classifier layer replaced with `nn.Linear(1024, 3)` for 3-class classification
+### Base Model — DenseNet-121
+
+**DenseNet-121 (Densely Connected Convolutional Network)** is a state-of-the-art CNN architecture where each layer receives feature maps from *all* preceding layers. This dense connectivity pattern provides:
+
+- **Feature reuse** — earlier features are reused throughout the network, leading to more compact and expressive representations.
+- **Gradient flow** — dense skip connections mitigate the vanishing gradient problem, enabling effective training of deep networks.
+- **Parameter efficiency** — achieves strong performance with fewer parameters compared to models like VGG or ResNet.
+
+DenseNet-121 consists of 4 dense blocks separated by transition layers, with a final global average pooling and a fully connected classifier.
+
+### Modifications for this Project
+
+| Component | Original | Modified |
+|-----------|----------|---------|
+| Pre-training | ImageNet (1000 classes) | Loaded as initial weights |
+| Classifier head | `Linear(1024, 1000)` | `Linear(1024, 3)` |
+| Fine-tuned layers | All frozen | `denseblock4` + classifier unfrozen |
+| Output activation | Softmax (1000) | Softmax (3 classes) |
+
 - **Input Size**: 224×224 RGB images (grayscale MRI scans converted to 3-channel)
-- **Output**: 3 class probabilities (softmax)
+- **Output**: 3 class probabilities via softmax
 
 ### Classification Classes
+
 | Label | Class Name | Description |
 |-------|------------|-------------|
 | 0 | Moderate Dementia | Patients with moderate cognitive impairment |
-| 1 | Non Demented | Healthy control subjects |
-| 2 | Very mild Dementia | Patients with early-stage/mild cognitive impairment |
+| 1 | Non Demented | Healthy control subjects with no cognitive decline |
+| 2 | Very Mild Dementia | Patients with early-stage or mild cognitive impairment |
 
 ---
 
-## Dataset Statistics
+## Dataset
 
-The dataset uses MRI brain scan images from the **OASIS-1** dataset. Each patient has multiple MRI slices (typically 60-70 slices per patient).
+The project uses MRI brain scan images from the **OASIS-1 (Open Access Series of Imaging Studies)** dataset. Each patient session contains multiple MRI slices (typically 60–70 slices per patient), providing rich spatial coverage of the brain.
 
-### Training Set (36 patients total)
+### Training Set — 36 patients
+
 | Class | Patient Count | Patient IDs |
 |-------|---------------|-------------|
 | Moderate Dementia | 14 | 0028, 0031, 0052, 0053, 0056, 0067, 0073, 0122, 0134, 0137, 0184, 0185, 0308, 0351 |
 | Non Demented | 11 | 0004, 0005, 0006, 0007, 0009, 0010, 0011, 0012, 0013, 0014, 0017 |
-| Very mild Dementia | 11 | 0021, 0022, 0023, 0039, 0041, 0042, 0046, 0060, 0066, 0082, 0084 |
+| Very Mild Dementia | 11 | 0021, 0022, 0023, 0039, 0041, 0042, 0046, 0060, 0066, 0082, 0084 |
 
-### Test Set (8 patients total)
+### Test Set — 8 patients
+
 | Class | Patient Count | Patient IDs |
 |-------|---------------|-------------|
 | Moderate Dementia | 3 | 0028, 0031, 0035 |
 | Non Demented | 2 | 0001, 0002 |
-| Very mild Dementia | 3 | 0003, 0015, 0016 |
+| Very Mild Dementia | 3 | 0003, 0015, 0016 |
 
-**Total Patients**: 44 unique patients (36 training + 8 test)
+**Total**: 44 unique patients (36 training + 8 test)
+
+---
+
+## Training Strategy
+
+### Data Preprocessing & Augmentation
+
+All images undergo the following pipeline before being fed into the model:
+
+| Step | Training | Evaluation/Test |
+|------|----------|-----------------|
+| Grayscale → 3-channel | ✔ | ✔ |
+| Random horizontal flip | ✔ | ✘ |
+| Random rotation (±10°) | ✔ | ✘ |
+| Resize to 224×224 | ✔ | ✔ |
+| Normalize (ImageNet stats) | ✔ | ✔ |
+
+**ImageNet normalization**: mean = `[0.485, 0.456, 0.406]`, std = `[0.229, 0.224, 0.225]`
+
+### Transfer Learning & Fine-Tuning
+
+1. Load DenseNet-121 with ImageNet pre-trained weights.
+2. Freeze all layers except the last dense block (`denseblock4`) and the classifier head.
+3. Replace the original 1000-class classifier with a 3-class `Linear` layer.
+4. Train only the unfrozen layers to preserve low-level feature representations while adapting high-level features to the MRI domain.
+
+### Optimizer & Scheduler
+
+| Hyperparameter | Value |
+|----------------|-------|
+| Optimizer | Adam |
+| Learning rate | 1e-5 |
+| Scheduler | CosineAnnealingLR |
+| Epochs | 30 |
+| Batch size | 16 |
+| Loss function | Cross-Entropy Loss |
+
+**CosineAnnealingLR** gradually reduces the learning rate following a cosine curve, helping the model converge to a better minimum while avoiding oscillation at lower loss values.
+
+### Validation Strategy
+
+During training, **patient-level AUROC** is computed alongside slice-level accuracy. This is important because multiple slices from the same patient should collectively vote on the final prediction:
+
+1. Softmax probabilities are computed for each slice.
+2. Probabilities are averaged across all slices of a patient (ensemble averaging).
+3. The averaged distribution is used to compute patient-level predictions and AUROC.
+
+---
+
+## Fine-Tuning Improvements
+
+The baseline model (`dementia.py`) achieved **~59.8% accuracy** with poor Very Mild Dementia recall (0.42). The improved training script `dementia_finetune.py` applies the following targeted fixes:
+
+### 1. Balanced Sampling (`WeightedRandomSampler`)
+The root cause of low Very Mild Dementia recall was that the model trained on unbalanced batches. Each sample is now assigned a weight inversely proportional to its class frequency. Every batch drawn by the sampler is class-balanced, forcing the model to learn equally well across all three stages.
+
+```python
+class_weights  = {cls: 1.0 / count for cls, count in class_counts.items()}
+sample_weights = [class_weights[label] for _, label, _ in train_dataset]
+sampler = WeightedRandomSampler(sample_weights, num_samples, replacement=True)
+```
+
+### 2. Weighted Cross-Entropy Loss + Label Smoothing
+Two complementary mechanisms applied to the loss function:
+- **Inverse-frequency class weights** increase the penalty for misclassifying rare classes, reinforcing the sampler's effect.
+- **Label smoothing (0.1)** prevents the model from becoming overconfident on any single class, improving generalisation.
+
+```python
+loss_fn = nn.CrossEntropyLoss(weight=inv_weights.to(device), label_smoothing=0.1)
+```
+
+### 3. Deeper Unfreezing — denseblock3 + transition3
+The baseline only unfroze `denseblock4`. The fine-tuned model additionally unfreezes `denseblock3` and the `transition3` layer, giving the model more capacity to re-learn MRI-specific intermediate features (tissue textures, boundary sharpness) that differ significantly from ImageNet patterns.
+
+| Layer group | Baseline | Fine-tuned |
+|-------------|----------|------------|
+| denseblock1-2 | Frozen | Frozen |
+| denseblock3 + transition3 | Frozen | **Unfrozen** |
+| denseblock4 + norm5 | Unfrozen | Unfrozen |
+| Classifier | Unfrozen | Unfrozen |
+
+### 4. MRI-Specific Augmentation
+Additional augmentations that simulate real MRI variability:
+
+| Augmentation | Purpose |
+|---|---|
+| `RandomAffine` (translate ±5%, scale 95–105%) | Simulates patient head positioning variation |
+| `RandomVerticalFlip` (p=0.1) | Axial slice orientation variation |
+| `ColorJitter` (brightness 0.2, contrast 0.3) | MRI scanner gain/contrast variability |
+| `GaussianBlur` (σ 0.1–1.5) | Simulates varying MRI slice thickness/noise |
+
+### 5. Learning Rate Warmup + Cosine Annealing
+The lower base LR (`5e-6`) avoids disrupting the pre-trained weights of the newly unfrozen `denseblock3`. A 5-epoch linear warmup ramps the LR from `1e-6` to `5e-6` before handing off to cosine annealing.
+
+```
+Epoch 1-5:  LR ramps  1e-6 → 5e-6   (warmup)
+Epoch 6-50: LR cosine 5e-6 → 1e-7   (fine convergence)
+```
+
+### 6. Best-Model Checkpointing by F1
+Instead of saving every-epoch checkpoints, the fine-tune run saves `weights/best_finetune.pth` only when validation **weighted F1** improves. This ensures the deployed model is the one that best balanced precision and recall, not the most-trained.
+
+### 7. Per-epoch Diagnostic Logging
+Each epoch prints Very Mild Dementia recall explicitly so degradation is caught early:
+```
+Ep 12/50 | LR 4.23e-06 | ... | F1 71.40% | VMD-Recall 68.30% | PatAUROC 0.9211
+```
+
+---
+
+## Evaluation Metrics
+
+Run the dedicated metrics script to compute all performance metrics on the test set:
+
+```bash
+python metrics.py
+```
+
+The script reports:
+
+| Metric | Description |
+|--------|-------------|
+| **Accuracy** | Fraction of correctly classified MRI slices |
+| **Precision** | Of all slices predicted as class X, how many actually belong to class X |
+| **Recall** | Of all slices truly belonging to class X, how many were correctly identified |
+| **F1-Score** | Harmonic mean of precision and recall — balances both metrics |
+
+All metrics are reported both **per-class** and as a **weighted average** (weighted by class support). A confusion matrix is also displayed.
+
+### Why These Metrics Matter
+
+- **Accuracy** alone can be misleading on imbalanced datasets. In medical diagnosis, it is critical to also evaluate precision and recall.
+- **Recall (Sensitivity)** is especially important in clinical settings — a missed dementia diagnosis (false negative) is more harmful than a false alarm.
+- **F1-Score** provides a single balanced score useful when class distributions are unequal.
 
 ---
 
 ## How Prediction Works
 
-The evaluation script (`demeval.py`) performs **patient-level prediction** using slice averaging:
+### Slice-Level (`metrics.py` and training loop)
 
-1. **Load all MRI slices** for a single patient (e.g., 61 slices for patient OAS1_0031)
-2. **Preprocess each slice**:
-   - Convert grayscale to 3-channel RGB
-   - Resize to 224×224 pixels
-   - Normalize using ImageNet mean/std
-3. **Forward pass** through DenseNet-121 → outputs `[num_slices, 3]` logits
-4. **Apply softmax** to get probabilities for each slice
-5. **Average probabilities** across all slices (ensemble voting)
-6. **Final prediction**: Class with highest average probability
+Each MRI slice image is individually classified. Predictions across the whole test set are aggregated to compute overall metrics.
 
-### Example Output
+### Patient-Level (`demeval.py`)
+
+For a single patient, prediction is performed by **slice averaging**:
+
+1. Load all MRI slices for the patient (e.g., 61 slices for OAS1_0031).
+2. Preprocess each slice (grayscale → 3-channel, resize, normalize).
+3. Forward pass through DenseNet-121 → `[num_slices, 3]` logits.
+4. Apply softmax → per-slice class probabilities.
+5. Average probabilities across all slices.
+6. Final prediction = class with highest average probability.
+
 ```
-torch.Size([61, 3, 224, 224])  # 61 slices, 3 channels, 224x224
-torch.Size([61, 3])            # 61 predictions, 3 classes each
-Moderate Dementia              # Final averaged prediction
+Input:  61 MRI slices  →  torch.Size([61, 3, 224, 224])
+Output: per-slice prob  →  torch.Size([61, 3])
+Final:  avg. vote       →  "Moderate Dementia"
 ```
 
 ---
 
 ## Project Structure
 
-- `dementia.py` – Training and validation loop using DenseNet121
-- `demeval.py` – Patient-level inference/evaluation script
-- `input/`
-  - `train/`
-    - `Moderate Dementia/`
-    - `Non Demented/`
-    - `Very mild Dementia/`
-  - `test/`
-    - `Moderate Dementia/`
-    - `Non Demented/`
-    - `Very mild Dementia/`
-- `weights/`
-  - `model_checkpoint_17.pth`
-  - `model_checkpoint_21.pth`
-  - `model_checkpoint_22.pth`
-- `best_model18.pth/` – Unpacked PyTorch checkpoint directory
-- `requirements.txt` – Python dependencies
-
-The training script saves checkpoints as `model_checkpoint_<epoch>.pth` plus a final `model_checkpoint_final.pth`.
+```
+Dementia-Prediction-System/
+│
+├── dementia.py            # Baseline training script (DenseNet-121, denseblock4 only)
+├── dementia_finetune.py   # Fine-tuned training script (all improvements applied)
+├── demeval.py             # Patient-level single-patient inference script
+├── metrics.py             # Evaluation script: accuracy, precision, recall, F1-score
+├── requirements.txt       # Python dependencies
+├── README.md              # This file
+│
+├── input/
+│   ├── train/
+│   │   ├── Moderate Dementia/
+│   │   ├── Non Demented/
+│   │   └── Very mild Dementia/
+│   └── test/
+│       ├── Moderate Dementia/
+│       ├── Non Demented/
+│       └── Very mild Dementia/
+│
+└── weights/
+    ├── model_checkpoint_17.pth
+    ├── model_checkpoint_21.pth
+    ├── model_checkpoint_22.pth      ← baseline checkpoint
+    ├── best_finetune.pth            ← best fine-tuned checkpoint (by val F1)
+    └── finetune_checkpoint_<N>.pth  ← periodic checkpoints every 10 epochs
+```
 
 ---
 
-## Python and Library Requirements
+## Installation & Usage
+
+### 1. Install dependencies
+
+```bash
+pip install -r requirements.txt
+```
+
+### 2. Train the baseline model
+
+```bash
+python dementia.py
+```
+
+Checkpoints saved as `model_checkpoint_<epoch>.pth` after each epoch.
+
+### 3. Run the fine-tuned training (recommended)
+
+```bash
+python dementia_finetune.py
+```
+
+Applies all improvements (balanced sampling, weighted loss, deeper unfreezing, MRI augmentation, LR warmup). Saves the best checkpoint to `weights/best_finetune.pth` based on validation F1. Prints Precision, Recall, F1, and Very Mild Dementia recall every epoch.
+
+### 4. Evaluate metrics on the test set
+
+```bash
+python metrics.py
+```
+
+Automatically uses `weights/best_finetune.pth` if it exists, otherwise falls back to `model_checkpoint_22.pth`. Prints accuracy, precision, recall, F1-score per class and overall, plus a confusion matrix.
+
+### 4. Predict for a single patient
+
+Edit the patient ID (`i`) in `demeval.py` and run:
+
+```bash
+python demeval.py
+```
+
+---
+
+## Dependencies
 
 Install Python 3.8 or newer (3.9+ recommended).
 
-Core Python dependencies (also listed in `requirements.txt`):
+| Library | Purpose |
+|---------|---------|
+| `torch` | Deep learning framework (model, training loop, inference) |
+| `torchvision` | Pre-trained DenseNet-121, image transforms, `ImageFolder` dataset |
+| `numpy` | Numerical operations and array handling |
+| `scikit-learn` | Metrics: accuracy, precision, recall, F1-score, AUROC, confusion matrix |
+| `pandas` | Data manipulation and logging |
+| `tqdm` | Training progress bar |
+| `Pillow` | Image loading and processing |
 
-- `torch` – PyTorch for deep learning.
-- `torchvision` – pretrained DenseNet121 model and image transforms/datasets.
-- `numpy` – numerical operations.
+All dependencies are listed in `requirements.txt` and can be installed with `pip install -r requirements.txt`.
 - `pandas` – imported but not heavily used; safe to keep.
 - `scikit-learn` – for `roc_auc_score` (AUROC metrics).
 - `tqdm` – progress bars during training epochs.
